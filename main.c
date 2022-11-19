@@ -1,8 +1,11 @@
+#include <errno.h>
 #include <getopt.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "heap.h"
 
 /* Exit the program verbosely */
 #define die(fmt, ...) \
@@ -20,6 +23,29 @@
     } while (0)
 
 #define EXTENSION ".hzip"
+#define READ_BUFFER_SIZE 4096
+
+void byte_occurrences(FILE *file, unsigned int *count){
+
+}
+
+/* Functions to generate heap array */
+void count_to_nodes(const int *acount, struct node *heap){
+    for (unsigned char byte = 0; byte < 0xFF; byte++){
+        if (acount[byte] == 0)
+            continue;
+
+        struct node *new_node = malloc(sizeof(struct node));
+
+        if (new_node == NULL)
+            die("Out of memory");
+
+        new_node->byte = byte;
+        new_node->count = acount[byte];
+        heap = new_node;
+        heap++;
+    }
+}
 
 
 int main(int argc, char **argv) {
@@ -28,7 +54,6 @@ int main(int argc, char **argv) {
     char *input_filename = NULL;
     char *output_filename = NULL;
     bool operation_mode = true; // true for zipping, false for unzipping
-
 
     int opt, nargs;
     const char *short_opts = ":hvuo:";
@@ -59,7 +84,7 @@ int main(int argc, char **argv) {
                 output_filename = optarg;
                 break;
             case '?':
-                die("unknown option '%c' (decimal: %d)", optopt, optopt);
+                die("unknown option '%c'", optopt, optopt);
                 break;
             case ':':
                 die("missing option argument for option %c", optopt);
@@ -87,13 +112,61 @@ int main(int argc, char **argv) {
     printf("Output: %s\n", output_filename);
 
     /* File opening */
+    FILE *file = fopen(input_filename, "rb");
+    if (file == NULL)
+        die_errno(errno, "fopen");
 
     /* Count occurrences of each character */
-    char ascii[0xFF];
+    unsigned int ascii_count[0xFF] = { 0 };
+    unsigned char buffer[READ_BUFFER_SIZE];
+    size_t n_bytes = 0; // How many bytes did we actually read into buffer?
+    unsigned char byte;  // For readability of indexing
 
-    /* Compile counts into a list */
+
+    while ((n_bytes = fread(buffer, sizeof(char), READ_BUFFER_SIZE, file)) != 0){
+        for (int i = 0; i < n_bytes; i++){
+            byte = buffer[i];
+            ascii_count[byte]++;
+        }
+    }
+
+    /* Compile counts into a heap */
+
+    // To establish array size, find how many bytes have a non-zero count
+    size_t used_bytes = 0;
+    for (byte = 0; byte < 0xFF; byte++)
+        used_bytes += ascii_count[byte] > 0 ? 1 : 0;
+
+    struct heap heap;
+    struct node array[used_bytes];
+
+    // Create nodes place them into the array
+    size_t array_index = 0;
+    for (byte = 0; byte < 0xFF; byte++){
+        if (ascii_count[byte] > 0) {
+            struct node new_node;
+            new_node.byte = byte;
+            new_node.count = ascii_count[byte];
+            array[array_index] = new_node;
+
+            array_index++;
+        }
+    }
+
+    // Init and build heap
+    init_heap(&heap, array, used_bytes);
+    build_heap(&heap);
+    print_heap(&heap);
+
+    struct node min;
+    while (heap.size){
+        printf("(Heap size: %lu) ", heap.size);
+        min = pop_min(&heap);
+        printf("Byte: %c, Count: %lu\n", min.byte, min.count);
+    }
 
     /* Build Huffman tree */
+
 
     /* Output into file */
 
